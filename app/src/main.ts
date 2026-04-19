@@ -4,9 +4,22 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+    }),
+  );
+
+  const trustProxy =
+    process.env.TRUST_PROXY === '1' || process.env.NODE_ENV === 'prod';
+  if (trustProxy) {
+    app.getHttpAdapter().getInstance().set('trust proxy', true);
+  }
 
   const config = new DocumentBuilder()
     .setTitle('App API')
