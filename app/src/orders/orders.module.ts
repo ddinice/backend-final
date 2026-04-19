@@ -4,11 +4,8 @@ import { OrdersService } from './orders.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { Product } from 'src/products/product.entity';
-import { User } from 'src/users/user.entity';
-import { RabbitmqModule } from 'src/rabbitmq/rabbitmq.module';
-import { ProcessedMessage } from './entities/processed-message.entity';
-import { OrdersWorkerService } from './orders-worker.service';
+import { Product } from 'src/products/entities/product.entity';
+import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
@@ -17,11 +14,9 @@ import { OrdersWorkerService } from './orders-worker.service';
       OrderItem,
       Product,
       User,
-      ProcessedMessage,
     ]),
-    RabbitmqModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, OrdersWorkerService],
+  providers: [OrdersService],
 })
 export class OrdersModule {}

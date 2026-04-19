@@ -1,21 +1,16 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
-  ServiceUnavailableException,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { Product } from '../products/product.entity';
-import { User } from '../users/user.entity';
-import { OrdersProcessMessage } from './orders-queue.types';
-import { RabbitmqService } from 'src/rabbitmq/rabbitmq.service';
-import { randomUUID } from 'crypto';
-import {
-  ORDERS_EXCHANGE,
-  ORDERS_PROCESS_ROUTING_KEY,
-} from 'src/rabbitmq/rabbitmq.constants';
+import { Product } from '../products/entities/product.entity';
+import { User } from '../users/entities/user.entity';
+import { CreateOrderResponseDto } from './dto/create-order-response.dto';
 
 export type CreateOrderItemInput = {
   productId: string;
@@ -34,16 +29,15 @@ export class OrdersService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
-    private readonly rabbitmqService: RabbitmqService,
   ) {}
 
   async createOrder(
     userId: string,
     items: CreateOrderItemInput[],
-  ): Promise<Order> {
+  ): Promise<CreateOrderResponseDto> {
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundException('User not found');
     }
 
     const productIds = items.map((item) => item.productId);
@@ -53,7 +47,7 @@ export class OrdersService {
     });
 
     if (products.length !== uniqueProductIds.length) {
-      throw new Error('One or more products were not found');
+      throw new NotFoundException('One or more products were not found');
     }
 
     const productsById = new Map(
@@ -74,7 +68,7 @@ export class OrdersService {
       const orderItems = items.map((item) => {
         const product = productsById.get(item.productId);
         if (!product) {
-          throw new Error('Product not found');
+          throw new NotFoundException('Product not found');
         }
 
         return orderItemRepository.create({
@@ -95,47 +89,25 @@ export class OrdersService {
       });
 
       if (!createdOrder) {
-        throw new Error('Order creation failed');
+        throw new BadRequestException('Order creation failed');
       }
 
       return createdOrder;
     });
 
-    const message: OrdersProcessMessage = {
-      messageId: randomUUID(),
-      orderId: created.id,
-      attempt: 0,
-      createdAt: new Date().toISOString(),
-      correlationId: created.id,
-      producer: 'orders-api',
-      eventName: 'orders.process.requested',
+
+    return {
+      order: {
+        id: created.id,
+        userId: created.userId,
+        items: created.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+        })),
+        status: created.status,
+        createdAt: created.createdAt,
+      }
     };
-
-    const published = this.rabbitmqService.publishToExchange(
-      ORDERS_EXCHANGE,
-      ORDERS_PROCESS_ROUTING_KEY,
-      message,
-      {
-        messageId: message.messageId,
-        correlationId: message.correlationId,
-        headers: {
-          messageId: message.messageId,
-          orderId: message.orderId,
-          attempt: message.attempt,
-        },
-      },
-    );
-
-    if (!published) {
-      this.logger.error(
-        `Failed to publish order processing message: orderId=${created.id} messageId=${message.messageId}`,
-      );
-      throw new ServiceUnavailableException(
-        'Order was created but not queued for processing. Please retry later.',
-      );
-    }
-
-    return created;
   }
 
   async findById(id: string): Promise<Order | null> {

@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Order } from './order.entity';
-import { Product } from '../../products/product.entity';
+import { Product } from '../../products/entities/product.entity';
 
 @Entity('order_items')
 @Index('IDX_order_items_order_id', ['orderId'])
