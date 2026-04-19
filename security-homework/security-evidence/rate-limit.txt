@@ -1,0 +1,15 @@
+# Command: repeated POST /auth/login (invalid credentials) — strict + default throttlers on auth routes
+# Observed: HTTP 401 until strict window exceeded, then 429 Too Many Requests
+
+401
+401
+401
+401
+401
+401
+401
+429
+429
+429
+429
+429

@@ -1,6 +1,7 @@
 import { Controller, Post, Body, UseGuards, Get, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { LoginDto, RegisterDto, RegisterResponseDto } from './dto/auth.dto';
-import { AuthService } from './auth.service';
+import { AuthService, loginAuditMetaFromRequest } from './auth.service';
 import {
   ApiBody,
   ApiCreatedResponse,
@@ -26,8 +27,11 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body() body: LoginDto): Promise<{ accessToken: string }> {
-    return this.authService.login(body);
+  async login(
+    @Body() body: LoginDto,
+    @Req() req: Request,
+  ): Promise<{ accessToken: string }> {
+    return this.authService.login(body, loginAuditMetaFromRequest(req));
   }
 
   @ApiBearerAuth()

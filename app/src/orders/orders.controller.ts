@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { OrdersService } from './orders.service';
 import type { Request } from 'express';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
@@ -24,13 +25,29 @@ import {
   ApiTags,
   ApiOkResponse,
 } from '@nestjs/swagger';
+import { AuditService } from 'src/common/audit/audit.service';
 
+function clientIp(req: Request): string | undefined {
+  const xf = req.headers['x-forwarded-for'];
+  if (typeof xf === 'string') {
+    return xf.split(',')[0]?.trim();
+  }
+  if (Array.isArray(xf)) {
+    return xf[0]?.split(',')[0]?.trim();
+  }
+  return req.socket?.remoteAddress;
+}
+
+@SkipThrottle({ strict: true })
 @ApiTags('orders')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Roles('admin', 'support', 'user')
   @Post()
@@ -69,12 +86,32 @@ export class OrdersController {
   }
 
   @Roles('admin')
+  @SkipThrottle({ strict: false })
+  @Throttle({ strict: { limit: 5, ttl: 60000 } })
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(
+    @Req() req: Request & { user?: AuthUser },
+    @Param('id') id: string,
+  ) {
     const deleted = await this.ordersService.deleteById(id);
     if (!deleted) {
       throw new NotFoundException('Order not found');
     }
+    const user = req.user as AuthUser;
+    this.auditService.emit({
+      action: 'orders.delete',
+      actorId: user.sub,
+      actorRoles: user.roles,
+      targetType: 'order',
+      targetId: id,
+      outcome: 'success',
+      correlationId: req.correlationId ?? 'unknown',
+      ip: clientIp(req),
+      userAgent:
+        typeof req.headers['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined,
+    });
     return { ok: true };
   }
 }
