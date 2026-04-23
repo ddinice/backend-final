@@ -32,7 +32,7 @@ import {
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  @Roles('admin', 'support', 'user')
+  @Roles('user', 'admin', 'support')
   @Post()
   @ApiBody({ type: CreateOrderDto })
   @ApiCreatedResponse({
