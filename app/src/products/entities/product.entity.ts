@@ -27,6 +27,12 @@ export class Product {
   @OneToMany(() => OrderItem, (item) => item.product)
   orderItems: OrderItem[];
 
+  @Column({ type: 'integer', name: 'stock', default: 0 })
+  stock: number;
+
+  @Column({ type: 'integer', name: 'version', default: 1 })
+  version: number;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

@@ -8,6 +8,7 @@ import { OrderItem } from '../orders/entities/order-item.entity';
 
 type SeedOrderItem = {
   id: string;
+  productTitle: string;
   quantity: number;
 };
 
@@ -24,11 +25,11 @@ const usersSeed = [
 ];
 
 const productsSeed = [
-  { title: 'Coffee Mug', price: '12.90', isActive: true },
-  { title: 'Notebook', price: '6.50', isActive: true },
-  { title: 'Desk Lamp', price: '38.00', isActive: true },
-  { title: 'Mechanical Keyboard', price: '129.00', isActive: true },
-  { title: 'Wireless Mouse', price: '45.00', isActive: true }
+  { title: 'Coffee Mug', price: '12.90', isActive: true, stock: 100, version: 1 },
+  { title: 'Notebook', price: '6.50', isActive: true, stock: 100, version: 1 },
+  { title: 'Desk Lamp', price: '38.00', isActive: true, stock: 100, version: 1 },
+  { title: 'Mechanical Keyboard', price: '129.00', isActive: true, stock: 10, version: 1 },
+  { title: 'Wireless Mouse', price: '45.00', isActive: true, stock: 10, version: 1 }
 ];
 
 const ordersSeed: SeedOrder[] = [
@@ -37,11 +38,13 @@ const ordersSeed: SeedOrder[] = [
     userEmail: 'test@example.com',
     items: [
       {
-        id: '05e8992f-818c-4e71-b8be-02644581d097',
+        id: 'a5fd9721-33d9-49ec-a691-4570a1d134d5',
+        productTitle: 'Coffee Mug',
         quantity: 2
       },
       {
-        id: '2bf9a018-e5fa-449e-b28f-ef3cb41620f4',
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
+        productTitle: 'Mechanical Keyboard',
         quantity: 1
       }
     ]
@@ -76,8 +79,8 @@ async function seed() {
     const products = await productsRepository.find({
       where: { title: In(productTitles) }
     });
-    const productsById = new Map(
-      products.map((product) => [product.id, product])
+    const productsByTitle = new Map(
+      products.map((product) => [product.title, product])
     );
 
     const ordersToUpsert: Array<Partial<Order>> = [];
@@ -96,9 +99,9 @@ async function seed() {
       });
 
       for (const item of orderSeed.items) {
-        const product = productsById.get(item.id);
+        const product = productsByTitle.get(item.productTitle);
         if (!product) {
-          throw new Error(`Missing product: ${item.id}`);
+          throw new Error(`Missing product: ${item.productTitle}`);
         }
 
         orderItemsToUpsert.push({
