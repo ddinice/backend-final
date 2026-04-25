@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { DomainError } from '../errors/domain.errors';
@@ -69,6 +70,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
       };
       return response.status(status).json(body);
     }
+
+    const req = ctx.getRequest<Request>();
+      Logger.error(
+        `[${correlationId}] ${req.method} ${req.url} failed: ${
+          exception instanceof Error ? exception.message : String(exception)
+        }`,
+        exception instanceof Error ? exception.stack : undefined,
+        HttpExceptionFilter.name,
+      );
 
     return response.status(status).json(body);
   }

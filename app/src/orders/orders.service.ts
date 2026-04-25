@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -11,6 +12,11 @@ import { OrderItem } from './entities/order-item.entity';
 import { Product } from '../products/entities/product.entity';
 import { User } from '../users/entities/user.entity';
 import { CreateOrderResponseDto } from './dto/create-order-response.dto';
+import {
+  ProcessedMessage,
+  ProcessedMessageStatus,
+} from '../idempotency/processed-message.entity';
+import { createHash } from 'crypto';
 
 export type CreateOrderItemInput = {
   productId: string;
@@ -29,15 +35,66 @@ export class OrdersService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    @InjectRepository(ProcessedMessage)
+    private readonly processedMessagesRepository: Repository<ProcessedMessage>,
   ) {}
 
   async createOrder(
     userId: string,
     items: CreateOrderItemInput[],
+    idempotencyKey: string,
   ): Promise<CreateOrderResponseDto> {
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    if (idempotencyKey) {
+      const existing = await this.processedMessagesRepository.findOne({
+        where: { scope: 'orders.create', idempotencyKey },
+      });
+      console.log('processedMessage', existing);
+
+      if (existing) {
+        const payload = {
+          userId,
+          items: items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        };
+        const payloadForHashString = JSON.stringify(payload);
+        const requestHash = createHash('sha256')
+          .update(payloadForHashString)
+          .digest('hex');
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException({
+            code: 409,
+            message: 'Idempotency key reused with different payload',
+          });
+        }
+
+        const order = await this.ordersRepository.findOne({
+          where: { id: existing.resourceId },
+          relations: { items: { product: true } },
+        });
+        if (!order) {
+          throw new NotFoundException('Order not found');
+        }
+
+        return {
+          order: {
+            id: order.id,
+            userId: order.userId,
+            items: order.items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+            status: order.status,
+            createdAt: order.createdAt,
+          },
+        };
+      }
     }
 
     const productIds = items.map((item) => item.productId);
@@ -54,59 +111,90 @@ export class OrdersService {
       products.map((product) => [product.id, product]),
     );
 
-    const created = await this.dataSource.transaction(async (manager) => {
-      const orderRepository = manager.getRepository(Order);
-      const orderItemRepository = manager.getRepository(OrderItem);
+    const orderTransaction = await this.dataSource.transaction(
+      async (manager) => {
+        const orderRepository = manager.getRepository(Order);
+        const orderItemRepository = manager.getRepository(OrderItem);
+        const processedMessageRepository =
+          manager.getRepository(ProcessedMessage);
 
-      const order = orderRepository.create({
-        userId: user.id,
-        user,
-        status: OrderStatus.PENDING,
-      });
-      await orderRepository.save(order);
-
-      const orderItems = items.map((item) => {
-        const product = productsById.get(item.productId);
-        if (!product) {
-          throw new NotFoundException('Product not found');
-        }
-
-        return orderItemRepository.create({
-          orderId: order.id,
-          order,
-          productId: product.id,
-          product,
-          quantity: item.quantity,
-          priceAtPurchase: product.price,
+        const order = orderRepository.create({
+          userId: user.id,
+          user,
+          status: OrderStatus.PENDING,
         });
-      });
+        await orderRepository.save(order);
+        const payloadForHash = {
+          userId,
+          items: items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        };
 
-      await orderItemRepository.save(orderItems);
+        const orderItems = items.map((item) => {
+          const product = productsById.get(item.productId);
+          if (!product) {
+            throw new NotFoundException('Product not found');
+          }
 
-      const createdOrder = await orderRepository.findOne({
-        where: { id: order.id },
-        relations: { user: true, items: { product: true } },
-      });
+          return orderItemRepository.create({
+            orderId: order.id,
+            order,
+            productId: product.id,
+            product,
+            quantity: item.quantity,
+            priceAtPurchase: product.price,
+          });
+        });
 
-      if (!createdOrder) {
-        throw new BadRequestException('Order creation failed');
-      }
+        await orderItemRepository.save(orderItems);
 
-      return createdOrder;
-    });
+        // Create processed message for the order
+        const payloadForHashString = JSON.stringify(payloadForHash);
+        const requestHash = createHash('sha256')
+          .update(payloadForHashString)
+          .digest('hex');
+        const processedMessage = await processedMessageRepository.create({
+          scope: 'orders.create',
+          idempotencyKey,
+          requestHash,
+          resourceId: order.id,
+          status: ProcessedMessageStatus.PENDING,
+        });
+        await processedMessageRepository.save(processedMessage);
 
+        const createdOrder = await orderRepository.findOne({
+          where: { id: order.id },
+          relations: { items: { product: true }, user: true },
+        });
+        if (!createdOrder)
+          throw new BadRequestException('Order creation failed');
 
+        await processedMessageRepository.update(
+          {
+            scope: 'orders.create',
+            idempotencyKey,
+            resourceId: order.id,
+          },
+          {
+            status: ProcessedMessageStatus.PROCESSED,
+          },
+        );
+        return createdOrder;
+      },
+    );
     return {
       order: {
-        id: created.id,
-        userId: created.userId,
-        items: created.items.map((item) => ({
+        id: orderTransaction.id,
+        userId: orderTransaction.userId,
+        items: orderTransaction.items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
         })),
-        status: created.status,
-        createdAt: created.createdAt,
-      }
+        status: orderTransaction.status,
+        createdAt: orderTransaction.createdAt,
+      },
     };
   }
 

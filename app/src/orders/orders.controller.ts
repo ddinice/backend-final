@@ -43,9 +43,15 @@ export class OrdersController {
     @Req() req: Request & { user?: any },
     @Body() body: CreateOrderDto,
   ): Promise<CreateOrderResponseDto> {
+
     const userId = (req.user as AuthUser).sub;
-    const { items } = body;
-    return this.ordersService.createOrder(userId, items);
+    const { items, idempotencyKey } = body;
+
+    return this.ordersService.createOrder(
+      userId,
+      items,
+      idempotencyKey,
+    );
   }
 
   @Roles('user', 'admin', 'support')

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { CreateOrderItemDto } from './create-order-item.dto';
-import { ArrayMinSize, IsArray, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateOrderDto {
@@ -10,4 +10,9 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
   items: CreateOrderItemDto[];
+
+  @ApiProperty({ type: 'string', example: '1234567890' })
+  @IsNotEmpty()
+  @IsString()
+  idempotencyKey: string;
 }
