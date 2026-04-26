@@ -23,6 +23,13 @@ import {
   ORDER_CREATE_SCOPE,
   ORDER_MAX_RETRIES,
 } from 'src/common/constants/order';
+import {
+  ListOrdersAggregatesDto,
+  ListOrdersItemDto,
+  ListOrdersResponseDto,
+} from './dto/list-orders-response.dto';
+import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { AuthUser } from 'src/auth/types';
 
 export type CreateOrderItemInput = {
   productId: string;
@@ -81,10 +88,91 @@ export class OrdersService {
     });
   }
 
-  async findAll(): Promise<Order[]> {
-    return this.ordersRepository.find({
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(actor: AuthUser, query: ListOrdersQueryDto): Promise<ListOrdersResponseDto> {
+    const {
+      page = 1,
+      limit = 20,
+      sortOrder = 'DESC',
+      sortBy = 'createdAt',
+      createdFrom,
+      createdTo,
+    } = query;
+    const offset = (page - 1) * limit;
+
+    const listQb = this.ordersRepository
+      .createQueryBuilder('o')
+      .leftJoin(OrderItem, 'oi', 'oi.order_id = o.id')
+      .select('o.id', 'id')
+      .addSelect('o.user_id', 'userId')
+      .addSelect('o.status', 'status')
+      .addSelect('o.created_at', 'createdAt')
+      .addSelect('COALESCE(SUM(oi.quantity), 0)', 'itemsCount')
+      .addSelect(
+        "COALESCE(SUM(oi.quantity * oi.price_at_purchase), 0)::numeric(12,2)::text",
+        'totalSum',
+      )
+      .groupBy('o.id')
+      .addGroupBy('o.user_id')
+      .addGroupBy('o.status')
+      .addGroupBy('o.created_at')
+      .orderBy(`o.${sortBy === 'createdAt' ? 'created_at' : 'created_at'}`, sortOrder)
+      .addOrderBy('o.id', sortOrder)
+      .offset(offset)
+      .limit(limit);
+
+    const countQb = this.ordersRepository
+      .createQueryBuilder('o')
+      .select('COUNT(*)', 'total');
+
+    if (!actor.roles.includes('admin') && !actor.roles.includes('support')) {
+      listQb.andWhere('o.user_id = :actorUserId', { actorUserId: actor.sub });
+      countQb.andWhere('o.user_id = :actorUserId', { actorUserId: actor.sub });
+    }
+
+    if (createdFrom) {
+      listQb.andWhere('o.created_at >= :createdFrom', { createdFrom });
+      countQb.andWhere('o.created_at >= :createdFrom', { createdFrom });
+    }
+
+    if (createdTo) {
+      listQb.andWhere('o.created_at <= :createdTo', { createdTo });
+      countQb.andWhere('o.created_at <= :createdTo', { createdTo });
+    }
+
+    const [rows, totalRow] = await Promise.all([listQb.getRawMany(), countQb.getRawOne()]);
+    const total = Number(totalRow?.total ?? 0);
+    const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+    const data: ListOrdersItemDto[] = rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      status: row.status as OrderStatus,
+      createdAt: new Date(row.createdAt),
+      itemsCount: Number(row.itemsCount ?? 0),
+      totalSum: String(row.totalSum ?? '0.00'),
+    }));
+
+    const aggregates: ListOrdersAggregatesDto = data.reduce(
+      (acc, item) => {
+        acc.itemsCount += item.itemsCount;
+        acc.totalSum = (Number(acc.totalSum) + Number(item.totalSum)).toFixed(2);
+        return acc;
+      },
+      { itemsCount: 0, totalSum: '0.00' },
+    );
+
+    return {
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+      aggregates,
+    };
   }
 
   async deleteById(id: string): Promise<boolean> {

@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
   Headers,
+  Query,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import type { Request } from 'express';
@@ -26,6 +27,8 @@ import {
   ApiOkResponse,
   ApiHeader,
 } from '@nestjs/swagger';
+import { ListOrdersResponseDto } from './dto/list-orders-response.dto';
+import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 
 @ApiTags('orders')
 @ApiBearerAuth()
@@ -66,10 +69,13 @@ export class OrdersController {
   @Get()
   @ApiOkResponse({
     description: 'Orders have been found',
-    type: [CreateOrderResponseDto],
+    type: ListOrdersResponseDto,
   })
-  async list() {
-    return this.ordersService.findAll();
+  async list(
+    @Req() req: Request & { user?: AuthUser },
+    @Query() query: ListOrdersQueryDto,
+  ): Promise<ListOrdersResponseDto> {
+    return this.ordersService.findAll(req.user as AuthUser, query);
   }
 
   @Roles('user', 'admin', 'support')
