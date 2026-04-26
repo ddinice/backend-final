@@ -10,9 +10,4 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
   items: CreateOrderItemDto[];
-
-  @ApiProperty({ type: 'string', example: '1234567890' })
-  @IsNotEmpty()
-  @IsString()
-  idempotencyKey: string;
 }

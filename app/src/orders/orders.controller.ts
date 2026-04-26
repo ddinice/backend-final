@@ -8,6 +8,7 @@ import {
   Post,
   Req,
   UseGuards,
+  Headers,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import type { Request } from 'express';
@@ -23,6 +24,7 @@ import {
   ApiCreatedResponse,
   ApiTags,
   ApiOkResponse,
+  ApiHeader,
 } from '@nestjs/swagger';
 
 @ApiTags('orders')
@@ -39,13 +41,19 @@ export class OrdersController {
     description: 'Order has been created',
     type: CreateOrderResponseDto,
   })
+  @ApiHeader({
+    name: 'X-Idempotency-Key',
+    description: 'Idempotency key',
+    example: '1234567890',
+  })
   async create(
     @Req() req: Request & { user?: any },
     @Body() body: CreateOrderDto,
+    @Headers('X-Idempotency-Key') idempotencyKey: string,
   ): Promise<CreateOrderResponseDto> {
 
     const userId = (req.user as AuthUser).sub;
-    const { items, idempotencyKey } = body;
+    const { items } = body;
 
     return this.ordersService.createOrder(
       userId,
