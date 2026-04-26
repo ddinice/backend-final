@@ -11,7 +11,7 @@ export class Idempotency1777006811958 implements MigrationInterface {
                 "idempotency_key" varchar(200),
                 "status" varchar(50) NOT NULL,
                 "request_hash" varchar(255) NOT NULL,
-                "resource_id" uuid NOT NULL,
+                "resource_id" uuid DEFAULT NULL,
                 "response_code" integer,
                 "response_message" varchar(255),
                 "error_code" integer,

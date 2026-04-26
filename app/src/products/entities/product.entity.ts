@@ -6,6 +6,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 import { OrderItem } from '../../orders/entities/order-item.entity';
 
@@ -30,7 +31,7 @@ export class Product {
   @Column({ type: 'integer', name: 'stock', default: 0 })
   stock: number;
 
-  @Column({ type: 'integer', name: 'version', default: 1 })
+  @VersionColumn({ name: 'version' })
   version: number;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })

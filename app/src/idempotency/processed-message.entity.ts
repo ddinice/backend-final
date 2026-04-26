@@ -43,8 +43,8 @@ export class ProcessedMessage {
   @Column({ type: 'varchar', name: 'request_hash' })
   requestHash: string;
 
-  @Column({ type: 'uuid', name: 'resource_id' })
-  resourceId: string;
+  @Column({ type: 'uuid', name: 'resource_id', nullable: true })
+  resourceId: string | null;
 
   @Column({ type: 'integer', name: 'response_code', nullable: true })
   responseCode: number;
