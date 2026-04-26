@@ -7,6 +7,7 @@ import { OrderItem } from './entities/order-item.entity';
 import { Product } from 'src/products/entities/product.entity';
 import { User } from '../users/entities/user.entity';
 import { ProcessedMessage } from '../idempotency/processed-message.entity';
+import { UsersModule } from 'src/users/users.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ProcessedMessage } from '../idempotency/processed-message.entity';
       User,
       ProcessedMessage,
     ]),
+    UsersModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],
