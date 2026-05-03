@@ -30,7 +30,7 @@ services:
     build:
       context: ./app
       dockerfile: Dockerfile
-    command: ["node", "dist/payments.grpc.bootstrap.js"]
+    command: ["node", "dist/src/payments.grpc.bootstrap.js"]
     environment:
       NODE_ENV: prod
       PAYMENTS_GRPC_PORT: "50051"
