@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  payments:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    command: ["node", "dist/payments.grpc.bootstrap.js"]
+    environment:
+      NODE_ENV: prod
+      PAYMENTS_GRPC_PORT: "50051"
+    ports:
+      - "50051:50051"
+    depends_on:
+      - rabbitmq
+
+  api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: prod
+      PORT: "3000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRES_IN: 5h
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_PREFETCH: "10"
+      PAYMENTS_GRPC_URL: payments:50051
+      PAYMENTS_GRPC_DISABLED: "false"
+      PAYMENTS_DEFAULT_CURRENCY: UAH
+      ORDER_PROCESS_INLINE: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      payments:
+        condition: service_started
+
+volumes:
+  pgdata: {}

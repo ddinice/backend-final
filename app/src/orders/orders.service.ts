@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -16,7 +17,9 @@ import {
   ProcessedMessage,
   ProcessedMessageStatus,
 } from '../idempotency/processed-message.entity';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
+import { PaymentsGrpcClient } from 'src/payments/payments-grpc.client';
 import { UsersService } from 'src/users/users.service';
 import { UserNotFoundError } from 'src/common/errors/domain.errors';
 import {
@@ -30,11 +33,15 @@ import {
 } from './dto/list-orders-response.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { AuthUser } from 'src/auth/types';
+import { OrdersProcessMessage } from './orders-queue.types';
+import { RabbitmqService } from 'src/rabbitmq/rabbitmq.service';
 
 export type CreateOrderItemInput = {
   productId: string;
   quantity: number;
 };
+
+type CreateOrderTxOutcome = { order: Order; isReplay: boolean };
 
 @Injectable()
 export class OrdersService {
@@ -43,11 +50,14 @@ export class OrdersService {
   constructor(
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
+    private readonly rabbitmqService: RabbitmqService,
+    private readonly configService: ConfigService,
+    private readonly paymentsGrpcClient: PaymentsGrpcClient,
     @InjectRepository(Order)
     private readonly ordersRepository: Repository<Order>,
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
-  ) { }
+  ) {}
 
   async createOrder(
     userId: string,
@@ -58,27 +68,109 @@ export class OrdersService {
     const productMap = this.buildProductMap(items);
     await this.ensureProductsExist(productMap);
 
-    const result = await this.dataSource.transaction(async (manager) => {
-      const hash = this.buildRequestHash(userId, items);
+    const { order: result, isReplay } = await this.dataSource.transaction(
+      async (manager): Promise<CreateOrderTxOutcome> => {
+        const hash = this.buildRequestHash(userId, items);
 
-      const replay = await this.claimIdempotencyOrReplay({
-        manager,
+        const replay = await this.claimIdempotencyOrReplay({
+          manager,
+          idempotencyKey,
+          hash,
+        });
+        if (replay) return { order: replay, isReplay: true };
+
+        const order = await this.createPendingOrder(manager, user);
+        await this.reserveStockAndCreateItems(manager, order, productMap);
+        await this.finalizeIdempotency(manager, {
+          idempotencyKey,
+          orderId: order.id,
+        });
+
+        const loaded = await this.loadOrderForResponse(manager, order.id);
+        return { order: loaded, isReplay: false };
+      },
+    );
+
+    if (!isReplay) {
+      const message: OrdersProcessMessage = {
+        messageId: randomUUID(),
+        orderId: result.id,
         idempotencyKey,
-        hash,
-      });
-      if (replay) return replay;
-
-      const order = await this.createPendingOrder(manager, user);
-      await this.reserveStockAndCreateItems(manager, order, productMap);
-      await this.finalizeIdempotency(manager, {
-        idempotencyKey,
-        orderId: order.id,
-      });
-
-      return this.loadOrderForResponse(manager, order.id);
-    });
+        attempt: 1,
+        items: items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+        })),
+      };
+      const inline =
+        this.configService.get<string>('ORDER_PROCESS_INLINE') === 'true';
+      if (inline) {
+        await this.processOrder(message);
+      } else {
+        this.rabbitmqService.publishToQueue('orders.process', message);
+      }
+    }
 
     return this.toCreateOrderResponse(result);
+  }
+
+  /**
+   * Background step: capture payment via gRPC Payments, then mark order PAID.
+   * Idempotent: safe if Rabbit redelivers the same messageId.
+   */
+  async processOrder(message: OrdersProcessMessage): Promise<void> {
+    this.logger.log(
+      `processOrder start orderId=${message.orderId} messageId=${message.messageId}`,
+    );
+
+    const order = await this.ordersRepository.findOne({
+      where: { id: message.orderId },
+      relations: { items: true },
+    });
+    if (!order) {
+      this.logger.warn(`processOrder: order not found ${message.orderId}`);
+      return;
+    }
+    if (order.status === OrderStatus.PAID) {
+      return;
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      this.logger.warn(
+        `processOrder: skip unexpected status=${order.status} order=${message.orderId}`,
+      );
+      return;
+    }
+
+    let total = 0;
+    for (const item of order.items) {
+      total += Number(item.priceAtPurchase) * Number(item.quantity);
+    }
+    const amount = total.toFixed(2);
+    const currency = this.configService.get<string>(
+      'PAYMENTS_DEFAULT_CURRENCY',
+      'UAH',
+    );
+    const captureKey = `capture:${message.messageId}`;
+
+    const capture = await this.paymentsGrpcClient.capture({
+      orderId: order.id,
+      idempotencyKey: captureKey,
+      amount,
+      currency,
+    });
+    if (capture.status !== 'SUCCEEDED') {
+      throw new Error(`Payment capture failed: status=${capture.status}`);
+    }
+
+    const upd = await this.ordersRepository.update(
+      { id: order.id, status: OrderStatus.PENDING },
+      { status: OrderStatus.PAID, processedAt: new Date() },
+    );
+    if (!upd.affected) {
+      this.logger.log(
+        `processOrder: order ${order.id} already transitioned (concurrent worker)`,
+      );
+    }
   }
 
   async findById(id: string): Promise<Order | null> {
@@ -88,7 +180,24 @@ export class OrdersService {
     });
   }
 
-  async findAll(actor: AuthUser, query: ListOrdersQueryDto): Promise<ListOrdersResponseDto> {
+  async findOneForActor(actor: AuthUser, id: string): Promise<Order | null> {
+    const order = await this.findById(id);
+    if (!order) {
+      return null;
+    }
+    if (actor.roles.includes('admin') || actor.roles.includes('support')) {
+      return order;
+    }
+    if (order.userId !== actor.sub) {
+      throw new ForbiddenException('You cannot access this order');
+    }
+    return order;
+  }
+
+  async findAll(
+    actor: AuthUser,
+    query: ListOrdersQueryDto,
+  ): Promise<ListOrdersResponseDto> {
     const {
       page = 1,
       limit = 20,
@@ -108,14 +217,17 @@ export class OrdersService {
       .addSelect('o.created_at', 'createdAt')
       .addSelect('COALESCE(SUM(oi.quantity), 0)', 'itemsCount')
       .addSelect(
-        "COALESCE(SUM(oi.quantity * oi.price_at_purchase), 0)::numeric(12,2)::text",
+        'COALESCE(SUM(oi.quantity * oi.price_at_purchase), 0)::numeric(12,2)::text',
         'totalSum',
       )
       .groupBy('o.id')
       .addGroupBy('o.user_id')
       .addGroupBy('o.status')
       .addGroupBy('o.created_at')
-      .orderBy(`o.${sortBy === 'createdAt' ? 'created_at' : 'created_at'}`, sortOrder)
+      .orderBy(
+        `o.${sortBy === 'createdAt' ? 'created_at' : 'created_at'}`,
+        sortOrder,
+      )
       .addOrderBy('o.id', sortOrder)
       .offset(offset)
       .limit(limit);
@@ -139,7 +251,10 @@ export class OrdersService {
       countQb.andWhere('o.created_at <= :createdTo', { createdTo });
     }
 
-    const [rows, totalRow] = await Promise.all([listQb.getRawMany(), countQb.getRawOne()]);
+    const [rows, totalRow] = await Promise.all([
+      listQb.getRawMany(),
+      countQb.getRawOne(),
+    ]);
     const total = Number(totalRow?.total ?? 0);
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
@@ -155,7 +270,9 @@ export class OrdersService {
     const aggregates: ListOrdersAggregatesDto = data.reduce(
       (acc, item) => {
         acc.itemsCount += item.itemsCount;
-        acc.totalSum = (Number(acc.totalSum) + Number(item.totalSum)).toFixed(2);
+        acc.totalSum = (Number(acc.totalSum) + Number(item.totalSum)).toFixed(
+          2,
+        );
         return acc;
       },
       { itemsCount: 0, totalSum: '0.00' },
@@ -211,10 +328,16 @@ export class OrdersService {
     }
   }
 
-  private buildRequestHash(userId: string, items: CreateOrderItemInput[]): string {
+  private buildRequestHash(
+    userId: string,
+    items: CreateOrderItemInput[],
+  ): string {
     const aggregated = new Map<string, number>();
     for (const item of items) {
-      aggregated.set(item.productId, (aggregated.get(item.productId) ?? 0) + item.quantity);
+      aggregated.set(
+        item.productId,
+        (aggregated.get(item.productId) ?? 0) + item.quantity,
+      );
     }
     const normalizedItems = Array.from(aggregated.entries())
       .map(([productId, quantity]) => ({ productId, quantity }))
@@ -222,9 +345,7 @@ export class OrdersService {
 
     const payload = { userId, items: normalizedItems };
 
-    return createHash('sha256')
-      .update(JSON.stringify(payload))
-      .digest('hex');
+    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   }
 
   private async claimIdempotencyOrReplay({

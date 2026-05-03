@@ -54,15 +54,10 @@ export class OrdersController {
     @Body() body: CreateOrderDto,
     @Headers('X-Idempotency-Key') idempotencyKey: string,
   ): Promise<CreateOrderResponseDto> {
-
     const userId = (req.user as AuthUser).sub;
     const { items } = body;
 
-    return this.ordersService.createOrder(
-      userId,
-      items,
-      idempotencyKey,
-    );
+    return this.ordersService.createOrder(userId, items, idempotencyKey);
   }
 
   @Roles('user', 'admin', 'support')
@@ -80,8 +75,14 @@ export class OrdersController {
 
   @Roles('user', 'admin', 'support')
   @Get(':id')
-  async byId(@Param('id') id: string) {
-    const order = await this.ordersService.findById(id);
+  async byId(
+    @Req() req: Request & { user?: AuthUser },
+    @Param('id') id: string,
+  ) {
+    const order = await this.ordersService.findOneForActor(
+      req.user as AuthUser,
+      id,
+    );
     if (!order) {
       throw new NotFoundException('Order not found');
     }

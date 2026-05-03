@@ -13,7 +13,7 @@ export class Init1700000000000 implements MigrationInterface {
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT "IDX_users_email_unique" UNIQUE ("email")
-      )`
+      )`,
     );
 
     await queryRunner.query(
@@ -23,7 +23,7 @@ export class Init1700000000000 implements MigrationInterface {
         "price" numeric(12, 2) NOT NULL,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now()
-      )`
+      )`,
     );
 
     await queryRunner.query(
@@ -33,11 +33,11 @@ export class Init1700000000000 implements MigrationInterface {
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT "FK_orders_user" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE
-      )`
+      )`,
     );
 
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_orders_user_id" ON "orders" ("user_id")`
+      `CREATE INDEX IF NOT EXISTS "IDX_orders_user_id" ON "orders" ("user_id")`,
     );
 
     await queryRunner.query(
@@ -49,15 +49,15 @@ export class Init1700000000000 implements MigrationInterface {
         "price_at_purchase" numeric(12, 2) NOT NULL,
         CONSTRAINT "FK_order_items_order" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE,
         CONSTRAINT "FK_order_items_product" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE RESTRICT
-      )`
+      )`,
     );
 
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_items_order_id" ON "order_items" ("order_id")`
+      `CREATE INDEX IF NOT EXISTS "IDX_order_items_order_id" ON "order_items" ("order_id")`,
     );
 
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_items_product_id" ON "order_items" ("product_id")`
+      `CREATE INDEX IF NOT EXISTS "IDX_order_items_product_id" ON "order_items" ("product_id")`,
     );
   }
 

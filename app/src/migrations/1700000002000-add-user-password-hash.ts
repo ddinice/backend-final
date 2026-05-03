@@ -13,4 +13,3 @@ export class AddUserPasswordHash1700000002000 implements MigrationInterface {
     await queryRunner.query('ALTER TABLE "users" DROP COLUMN "password_hash"');
   }
 }
-

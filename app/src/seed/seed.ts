@@ -21,15 +21,39 @@ type SeedOrder = {
 const usersSeed = [
   { email: 'test@example.com', roles: ['user'] },
   { email: 'bob@example.com', roles: ['support'] },
-  { email: 'admin@example.com', roles: ['admin'] }
+  { email: 'admin@example.com', roles: ['admin'] },
 ];
 
 const productsSeed = [
-  { title: 'Coffee Mug', price: '12.90', isActive: true, stock: 100, version: 1 },
+  {
+    title: 'Coffee Mug',
+    price: '12.90',
+    isActive: true,
+    stock: 100,
+    version: 1,
+  },
   { title: 'Notebook', price: '6.50', isActive: true, stock: 100, version: 1 },
-  { title: 'Desk Lamp', price: '38.00', isActive: true, stock: 100, version: 1 },
-  { title: 'Mechanical Keyboard', price: '129.00', isActive: true, stock: 10, version: 1 },
-  { title: 'Wireless Mouse', price: '45.00', isActive: true, stock: 10, version: 1 }
+  {
+    title: 'Desk Lamp',
+    price: '38.00',
+    isActive: true,
+    stock: 100,
+    version: 1,
+  },
+  {
+    title: 'Mechanical Keyboard',
+    price: '129.00',
+    isActive: true,
+    stock: 10,
+    version: 1,
+  },
+  {
+    title: 'Wireless Mouse',
+    price: '45.00',
+    isActive: true,
+    stock: 10,
+    version: 1,
+  },
 ];
 
 const ordersSeed: SeedOrder[] = [
@@ -40,14 +64,14 @@ const ordersSeed: SeedOrder[] = [
       {
         id: 'a5fd9721-33d9-49ec-a691-4570a1d134d5',
         productTitle: 'Coffee Mug',
-        quantity: 2
+        quantity: 2,
       },
       {
         id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
         productTitle: 'Mechanical Keyboard',
-        quantity: 1
-      }
-    ]
+        quantity: 1,
+      },
+    ],
   },
 ];
 
@@ -65,22 +89,23 @@ async function seed() {
     const orderItemsRepository = dataSource.getRepository(OrderItem);
 
     const passwordHash = await bcrypt.hash('password', 10);
-    await usersRepository.upsert(usersSeed.map((user) => ({ ...user, passwordHash })), [
-      'email'
-    ]);
+    await usersRepository.upsert(
+      usersSeed.map((user) => ({ ...user, passwordHash })),
+      ['email'],
+    );
     await productsRepository.upsert(productsSeed, ['title']);
 
     const users = await usersRepository.find({
-      where: { email: In(usersSeed.map((user) => user.email)) }
+      where: { email: In(usersSeed.map((user) => user.email)) },
     });
     const usersByEmail = new Map(users.map((user) => [user.email, user]));
 
     const productTitles = productsSeed.map((product) => product.title);
     const products = await productsRepository.find({
-      where: { title: In(productTitles) }
+      where: { title: In(productTitles) },
     });
     const productsByTitle = new Map(
-      products.map((product) => [product.title, product])
+      products.map((product) => [product.title, product]),
     );
 
     const ordersToUpsert: Array<Partial<Order>> = [];
@@ -95,7 +120,7 @@ async function seed() {
       ordersToUpsert.push({
         id: orderSeed.id,
         userId: user.id,
-        status: OrderStatus.PENDING
+        status: OrderStatus.PENDING,
       });
 
       for (const item of orderSeed.items) {
@@ -109,7 +134,7 @@ async function seed() {
           orderId: orderSeed.id,
           productId: product.id,
           quantity: item.quantity,
-          priceAtPurchase: product.price
+          priceAtPurchase: product.price,
         });
       }
     }

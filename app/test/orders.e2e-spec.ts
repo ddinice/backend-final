@@ -51,7 +51,11 @@ describe('Orders e2e', () => {
       }),
     );
 
-    token = jwtService.sign({ sub: user.id, email: user.email, roles: ['user'] });
+    token = jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      roles: ['user'],
+    });
   });
 
   beforeEach(async () => {
@@ -76,7 +80,12 @@ describe('Orders e2e', () => {
 
   afterEach(async () => {
     if (!ds?.isInitialized) return;
-    await ds.createQueryBuilder().delete().from(OrderItem).where('1=1').execute();
+    await ds
+      .createQueryBuilder()
+      .delete()
+      .from(OrderItem)
+      .where('1=1')
+      .execute();
     await ds.createQueryBuilder().delete().from(Order).where('1=1').execute();
     await ds
       .createQueryBuilder()
@@ -97,7 +106,10 @@ describe('Orders e2e', () => {
     }
   });
 
-  const postOrder = (key: string, items: Array<{ productId: string; quantity: number }>) =>
+  const postOrder = (
+    key: string,
+    items: Array<{ productId: string; quantity: number }>,
+  ) =>
     request(app.getHttpServer())
       .post('/v1/orders')
       .set('Authorization', `Bearer ${token}`)
@@ -150,12 +162,19 @@ describe('Orders e2e', () => {
 
   it('concurrent update on low stock', async () => {
     const r = await Promise.allSettled([
-      postOrder(`k-${Date.now()}-c1`, [{ productId: lowStock.id, quantity: 1 }]),
-      postOrder(`k-${Date.now()}-c2`, [{ productId: lowStock.id, quantity: 1 }]),
+      postOrder(`k-${Date.now()}-c1`, [
+        { productId: lowStock.id, quantity: 1 },
+      ]),
+      postOrder(`k-${Date.now()}-c2`, [
+        { productId: lowStock.id, quantity: 1 },
+      ]),
     ]);
 
     const responses = r
-      .filter((x): x is PromiseFulfilledResult<request.Response> => x.status === 'fulfilled')
+      .filter(
+        (x): x is PromiseFulfilledResult<request.Response> =>
+          x.status === 'fulfilled',
+      )
       .map((x) => x.value);
 
     const statuses = responses.map((x) => x.status).sort();
@@ -164,7 +183,9 @@ describe('Orders e2e', () => {
   });
 
   it('GET /v1/orders returns envelope with meta and aggregates', async () => {
-    await postOrder(`k-${Date.now()}-list-envelope`, [{ productId: p1.id, quantity: 2 }]);
+    await postOrder(`k-${Date.now()}-list-envelope`, [
+      { productId: p1.id, quantity: 2 },
+    ]);
 
     const r = await getOrders();
     expect(r.status).toBe(200);
@@ -189,7 +210,9 @@ describe('Orders e2e', () => {
       }),
     );
 
-    const ownOrder = await orders.save(orders.create({ userId: user.id, status: OrderStatus.PENDING }));
+    const ownOrder = await orders.save(
+      orders.create({ userId: user.id, status: OrderStatus.PENDING }),
+    );
     const foreignOrder = await orders.save(
       orders.create({ userId: otherUser.id, status: OrderStatus.PENDING }),
     );
@@ -212,7 +235,9 @@ describe('Orders e2e', () => {
 
     const userResp = await getOrders();
     expect(userResp.status).toBe(200);
-    expect(userResp.body.data.every((x: { userId: string }) => x.userId === user.id)).toBe(true);
+    expect(
+      userResp.body.data.every((x: { userId: string }) => x.userId === user.id),
+    ).toBe(true);
 
     const adminToken = jwtService.sign({
       sub: `admin-${randomUUID()}`,
@@ -221,11 +246,17 @@ describe('Orders e2e', () => {
     });
     const adminResp = await getOrders({}, adminToken);
     expect(adminResp.status).toBe(200);
-    expect(adminResp.body.data.some((x: { userId: string }) => x.userId === otherUser.id)).toBe(true);
+    expect(
+      adminResp.body.data.some(
+        (x: { userId: string }) => x.userId === otherUser.id,
+      ),
+    ).toBe(true);
   });
 
   it('GET /v1/orders filters by createdFrom/createdTo', async () => {
-    await postOrder(`k-${Date.now()}-list-date`, [{ productId: p1.id, quantity: 1 }]);
+    await postOrder(`k-${Date.now()}-list-date`, [
+      { productId: p1.id, quantity: 1 },
+    ]);
     const now = new Date();
     const createdFrom = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
     const createdTo = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
@@ -236,8 +267,12 @@ describe('Orders e2e', () => {
   });
 
   it('GET /v1/orders sorts by createdAt ASC/DESC', async () => {
-    await postOrder(`k-${Date.now()}-list-sort-1`, [{ productId: p1.id, quantity: 1 }]);
-    await postOrder(`k-${Date.now()}-list-sort-2`, [{ productId: p1.id, quantity: 1 }]);
+    await postOrder(`k-${Date.now()}-list-sort-1`, [
+      { productId: p1.id, quantity: 1 },
+    ]);
+    await postOrder(`k-${Date.now()}-list-sort-2`, [
+      { productId: p1.id, quantity: 1 },
+    ]);
 
     const asc = await getOrders({ sortOrder: 'ASC' });
     const desc = await getOrders({ sortOrder: 'DESC' });
@@ -246,20 +281,30 @@ describe('Orders e2e', () => {
     expect(desc.status).toBe(200);
     if (asc.body.data.length >= 2) {
       const ascFirst = new Date(asc.body.data[0].createdAt).getTime();
-      const ascLast = new Date(asc.body.data[asc.body.data.length - 1].createdAt).getTime();
+      const ascLast = new Date(
+        asc.body.data[asc.body.data.length - 1].createdAt,
+      ).getTime();
       expect(ascFirst).toBeLessThanOrEqual(ascLast);
     }
     if (desc.body.data.length >= 2) {
       const descFirst = new Date(desc.body.data[0].createdAt).getTime();
-      const descLast = new Date(desc.body.data[desc.body.data.length - 1].createdAt).getTime();
+      const descLast = new Date(
+        desc.body.data[desc.body.data.length - 1].createdAt,
+      ).getTime();
       expect(descFirst).toBeGreaterThanOrEqual(descLast);
     }
   });
 
   it('GET /v1/orders paginates and returns correct meta.total', async () => {
-    await postOrder(`k-${Date.now()}-list-page-1`, [{ productId: p1.id, quantity: 1 }]);
-    await postOrder(`k-${Date.now()}-list-page-2`, [{ productId: p1.id, quantity: 1 }]);
-    await postOrder(`k-${Date.now()}-list-page-3`, [{ productId: p1.id, quantity: 1 }]);
+    await postOrder(`k-${Date.now()}-list-page-1`, [
+      { productId: p1.id, quantity: 1 },
+    ]);
+    await postOrder(`k-${Date.now()}-list-page-2`, [
+      { productId: p1.id, quantity: 1 },
+    ]);
+    await postOrder(`k-${Date.now()}-list-page-3`, [
+      { productId: p1.id, quantity: 1 },
+    ]);
 
     const r = await getOrders({ page: 1, limit: 2, sortOrder: 'DESC' });
     expect(r.status).toBe(200);
@@ -271,19 +316,25 @@ describe('Orders e2e', () => {
   });
 
   it('GET /v1/orders returns correct itemsCount and totalSum aggregates', async () => {
-    await postOrder(`k-${Date.now()}-agg-1`, [{ productId: p1.id, quantity: 2 }]);
-    await postOrder(`k-${Date.now()}-agg-2`, [{ productId: p1.id, quantity: 3 }]);
+    await postOrder(`k-${Date.now()}-agg-1`, [
+      { productId: p1.id, quantity: 2 },
+    ]);
+    await postOrder(`k-${Date.now()}-agg-2`, [
+      { productId: p1.id, quantity: 3 },
+    ]);
 
     const r = await getOrders({ page: 1, limit: 20, sortOrder: 'DESC' });
     expect(r.status).toBe(200);
 
     const summedItems = r.body.data.reduce(
-      (acc: number, item: { itemsCount: number }) => acc + Number(item.itemsCount),
+      (acc: number, item: { itemsCount: number }) =>
+        acc + Number(item.itemsCount),
       0,
     );
     const summedTotal = r.body.data
       .reduce(
-        (acc: number, item: { totalSum: string }) => acc + Number(item.totalSum),
+        (acc: number, item: { totalSum: string }) =>
+          acc + Number(item.totalSum),
         0,
       )
       .toFixed(2);

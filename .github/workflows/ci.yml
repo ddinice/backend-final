@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  build-and-e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run database migrations
+        env:
+          NODE_ENV: dev
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: postgres
+        run: npm run db:migrate
+
+      - name: End-to-end tests
+        env:
+          NODE_ENV: dev
+          PORT: '3000'
+          JWT_SECRET: e2e-jwt-secret-min-32-chars-long!!
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: postgres
+          RABBITMQ_DISABLED: 'true'
+          ORDER_PROCESS_INLINE: 'true'
+          PAYMENTS_GRPC_DISABLED: 'true'
+        run: npm run test:e2e
+
+      - name: Unit tests (placeholder)
+        run: npm run test

@@ -8,6 +8,9 @@ import { Product } from 'src/products/entities/product.entity';
 import { User } from '../users/entities/user.entity';
 import { ProcessedMessage } from '../idempotency/processed-message.entity';
 import { UsersModule } from 'src/users/users.module';
+import { RabbitmqModule } from 'src/rabbitmq/rabbitmq.module';
+import { OrdersWorkerService } from './orders-worker.service';
+import { PaymentsClientModule } from 'src/payments/payments-client.module';
 
 @Module({
   imports: [
@@ -19,8 +22,10 @@ import { UsersModule } from 'src/users/users.module';
       ProcessedMessage,
     ]),
     UsersModule,
+    RabbitmqModule,
+    PaymentsClientModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrdersWorkerService],
 })
 export class OrdersModule {}

@@ -49,7 +49,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
         body = {
           code: String(res.code),
           message: String(res.message),
-          details: res.details && typeof res.details === 'object' ? res.details : undefined,
+          details:
+            res.details && typeof res.details === 'object'
+              ? res.details
+              : undefined,
           correlationId,
         };
         return response.status(status).json(body);
@@ -61,24 +64,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
           typeof res === 'string'
             ? res
             : res?.message
-            ? Array.isArray(res.message)
-              ? 'Request failed'
-              : String(res.message)
-            : 'Request failed',
-        details: Array.isArray(res?.message) ? { messages: res.message } : undefined,
+              ? Array.isArray(res.message)
+                ? 'Request failed'
+                : String(res.message)
+              : 'Request failed',
+        details: Array.isArray(res?.message)
+          ? { messages: res.message }
+          : undefined,
         correlationId,
       };
       return response.status(status).json(body);
     }
 
     const req = ctx.getRequest<Request>();
-      Logger.error(
-        `[${correlationId}] ${req.method} ${req.url} failed: ${
-          exception instanceof Error ? exception.message : String(exception)
-        }`,
-        exception instanceof Error ? exception.stack : undefined,
-        HttpExceptionFilter.name,
-      );
+    Logger.error(
+      `[${correlationId}] ${req.method} ${req.url} failed: ${
+        exception instanceof Error ? exception.message : String(exception)
+      }`,
+      exception instanceof Error ? exception.stack : undefined,
+      HttpExceptionFilter.name,
+    );
 
     return response.status(status).json(body);
   }

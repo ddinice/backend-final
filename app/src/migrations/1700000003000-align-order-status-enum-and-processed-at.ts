@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AlignOrderStatusEnumAndProcessedAt1700000003000
-  implements MigrationInterface
-{
+export class AlignOrderStatusEnumAndProcessedAt1700000003000 implements MigrationInterface {
   /** `ALTER TYPE ... ADD VALUE` must commit before new labels are usable in the same session. */
   transaction = false;
 

@@ -13,4 +13,3 @@ export class AddUserRoles1700000002001 implements MigrationInterface {
     await queryRunner.query('ALTER TABLE "users" DROP COLUMN "roles"');
   }
 }
-

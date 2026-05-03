@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package payments;
+
+service Payments {
+  rpc Capture (CaptureRequest) returns (CaptureReply);
+}
+
+message CaptureRequest {
+  string order_id = 1;
+  string idempotency_key = 2;
+  string amount = 3;
+  string currency = 4;
+}
+
+message CaptureReply {
+  string status = 1;
+  string payment_id = 2;
+}

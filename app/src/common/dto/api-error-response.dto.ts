@@ -8,12 +8,12 @@ export class ApiErrorResponseDto {
   message!: string;
 
   @ApiPropertyOptional({
-    example: { fields: [{ field: 'email', errors: ['email must be an email'] }] },
+    example: {
+      fields: [{ field: 'email', errors: ['email must be an email'] }],
+    },
   })
   details?: Record<string, unknown>;
 
   @ApiProperty({ example: 'req-123' })
   correlationId!: string;
 }
-
-
