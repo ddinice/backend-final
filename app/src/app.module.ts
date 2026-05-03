@@ -8,6 +8,7 @@ import { OrdersModule } from './orders/orders.module';
 import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { PaymentsDocsModule } from './payments/payments-docs.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -62,6 +63,7 @@ import { APP_GUARD } from '@nestjs/core';
     RabbitmqModule,
     HealthModule,
     MetricsModule,
+    PaymentsDocsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

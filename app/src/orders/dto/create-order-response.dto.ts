@@ -12,7 +12,7 @@ export class CreatedOrderPayloadDto {
   userId: string;
   @ApiProperty({
     type: [CreateOrderItemDto],
-    description: 'Рядки замовлення після створення',
+    description: 'Order line items after creation',
   })
   items: CreateOrderItemDto[];
   @ApiProperty({ enum: OrderStatus, enumName: 'OrderStatus' })

@@ -38,13 +38,45 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<string>('RABBITMQ_PREFETCH') ?? '10',
     );
 
-    this.connection = await amqp.connect(url);
-    this.channel = await this.connection.createChannel();
+    const maxAttempts = 30;
+    const delayMs = 2000;
 
-    await this.channel.prefetch(prefetch);
-
-    await this.assertInfrastructure();
-    this.logger.log(`RabbitMQ connected (prefetch=${prefetch})`);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let conn: ChannelModel | null = null;
+      let ch: Channel | null = null;
+      try {
+        conn = await amqp.connect(url);
+        ch = await conn.createChannel();
+        await ch.prefetch(prefetch);
+        await this.assertInfrastructureOnChannel(ch);
+        this.connection = conn;
+        this.channel = ch;
+        this.logger.log(
+          `RabbitMQ connected (prefetch=${prefetch}, attempts=${attempt})`,
+        );
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `RabbitMQ connect attempt ${attempt}/${maxAttempts} failed: ${message}`,
+        );
+        try {
+          await ch?.close();
+        } catch {
+          /* ignore */
+        }
+        try {
+          await conn?.close();
+        } catch {
+          /* ignore */
+        }
+        if (attempt === maxAttempts) {
+          this.logger.error('RabbitMQ: max connect attempts reached');
+          throw err;
+        }
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
   }
 
   private getChannel(): Channel {
@@ -54,9 +86,7 @@ export class RabbitmqService implements OnModuleInit, OnModuleDestroy {
     return this.channel;
   }
 
-  private async assertInfrastructure() {
-    const ch = this.getChannel();
-
+  private async assertInfrastructureOnChannel(ch: Channel) {
     await ch.assertQueue('orders.process', { durable: true });
     await ch.assertQueue('orders.dlq', { durable: true });
   }

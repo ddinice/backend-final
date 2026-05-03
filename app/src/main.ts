@@ -15,6 +15,9 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('App API')
+    .setDescription(
+      'Orders, auth, health, metrics. Payments run in a separate **gRPC** microservice `Payments.Capture` (see Swagger tag **Payments (gRPC)** → `GET /v1/payments/grpc-contract`).',
+    )
     .setVersion('1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
     .build();
